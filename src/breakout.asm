@@ -10,8 +10,8 @@
 # - Display height in pixels:   256
 # - Base Address for Display:   0x10008000 ($gp)
 ##############################################################################
-.eqv BALL_SIZE 2
-    .data
+.eqv PADDLE_SIZE 8
+.data
 ##############################################################################
 # Immutable Data
 ##############################################################################
@@ -29,7 +29,7 @@ GRAY:
 .word 0x808080 #gray
 WHITE:
 .word 0xffffff #white
-BACKGROUND:
+BACKGROUND_COLOUR:
 .word 0x000000
 
 
@@ -38,9 +38,14 @@ BACKGROUND:
 # Mutable Data
 ##############################################################################
 BALL:
-    .word 100
-    .word 100
-    .word BALL_SIZE
+    .word 18 #x position
+    .word 18 #y position
+    .word 1 # x direction (1 is right, -1 left)
+    .word 1 # y direction (1 is down, -1 is up)
+PADDLE:
+    .word 18 #x position
+    .word 18 #y position
+    .word PADDLE_SIZE
 ##############################################################################
 # Code
 ##############################################################################
@@ -75,7 +80,7 @@ main: #SO FAR: Draws a full static game scree
     
     addi $a0, $v0, 0            # Put return value in $a0
     la $a1, WHITE
-    li $a2, 8
+    li $a2, PADDLE_SIZE
     jal draw_paddle               # Draws a white paddle at $a0
     
     li $a0, 18
