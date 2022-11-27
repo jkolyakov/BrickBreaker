@@ -43,8 +43,8 @@ BALL:
     .word 1 # x direction (1 is right, -1 left)
     .word 1 # y direction (1 is down, -1 is up)
 PADDLE:
-    .word 18 #x position
-    .word 18 #y position
+    .word 12 #x position
+    .word 24 #y position
     .word PADDLE_SIZE
 ##############################################################################
 # Code
@@ -90,7 +90,7 @@ main: #SO FAR: Draws a full static game scree
     addi $a0, $v0, 0            # Put return value in $a0
     la $a1, WHITE
     jal draw_ball               # Draws the ball at position $a0
-    
+    jal game_loop		#Jumps to the game loop
 exit:
 	li 		$v0, 10
 	syscall
@@ -191,6 +191,7 @@ draw_paddle:
     lw $t0, 0($a1)              # colour = *colour_address
     # Iterate $a2 times, drawing each unit in the line
     li $t1, 0                   # i = 0
+    
 draw_paddle_loop:
 
     slt $t2, $t1, $a2           # i < width ?
@@ -238,8 +239,106 @@ get_location_address:
 	add 	$v0, $v0, $a1           # res = address of (x, y)
 
     jr $ra
-
     
+#Checks for keyboard input
+keyboard_input:                     	# A key is pressed
+    lw $a0, 4($t0)                  	# Load second word from keyboard
+    beq $a0 0x61, move_left		# moves paddle left 1 unit
+    beq $a0 0x64, move_right		# moves paddle right 1 unit
+    beq $a0, 0x71, quit     		# Check if the key q was pressed
+    beq $a0, 0x70, pause_game     	# Check if the key p was pressed
+    b game_loop
+
+erase_helper:
+	subi $sp, $sp, 4  # allocate 1 word on the stack
+	sw $ra, 0($sp)      # save $ra 
+    	jal get_location_address	#Gets the location address at (wherever the paddle is)
+    	addi $a0, $v0, 0            # Put return value in $a0
+   	la $a1, BACKGROUND_COLOUR 	#Changes the color of the paddle drawn to be the background color
+    	li $a2, PADDLE_SIZE
+    	
+    	#Nested procedure so we need to store the previous $ra
+    	
+    	jal draw_paddle       	        #Erases the paddle
+    	lw $ra, 0($sp)
+    	addi $sp, $sp, 4
+    	
+    	jr $ra
+
+move_left:
+	la $t0, PADDLE 			#Gets paddle object
+	lw $a0, 0($t0)			#Sets parameter 1 to x value
+    	lw $a1, 4($t0)			#Sets parameter 2 to y value
+	jal erase_helper		#Erase helper function
+    	
+    	
+    	la $t0, PADDLE 			#Gets paddle object
+    	lw $a0, 0($t0)			#Sets parameter 1 to x value
+    	lw $a1, 4($t0)			#Sets parameter 2 to y value
+    	beq $a0, 1, skip_drawing_left 	#Catches if the paddle is at the edge
+    	addi $a0, $a0, -1		#Moves x value left by 1
+    	skip_drawing_left:
+    	li $v1, 0			#resets the erase case
+    	sw $a0, 0($t0)			#Updates x value
+    	sw $a1, 4($t0)			#Updates y value
+    	
+    	jal get_location_address	#Gets the location address at (wherever the paddle is)
+    	addi $a0, $v0, 0            # Put return value in $a0
+    	la $a1, WHITE 	#Changes the color of the paddle drawn to be the background color
+    	li $a2, PADDLE_SIZE
+    	jal draw_paddle               # Draws the new paddle
+	b game_loop			#Branches back to game loop
+
+move_right:
+	la $t0, PADDLE 			#Gets paddle object
+	lw $a0, 0($t0)			#Sets parameter 1 to x value
+    	lw $a1, 4($t0)			#Sets parameter 2 to y value
+	jal erase_helper		#Erase helper function
+    	
+    	
+    	la $t0, PADDLE 			#Gets paddle object
+    	lw $a0, 0($t0)			#Sets parameter 1 to x value
+    	lw $a1, 4($t0)			#Sets parameter 2 to y value
+    	beq $a0, 23, skip_drawing_right 	#Catches if the paddle is at the edge
+    	addi $a0, $a0, 1		#Moves x value left by 1
+    	skip_drawing_right:
+    	li $v1, 0			#resets erase case
+    	sw $a0, 0($t0)			#Updates x value
+    	sw $a1, 4($t0)			#Updates y value
+    	
+    	jal get_location_address	#Gets the location address at (wherever the paddle is)
+    	addi $a0, $v0, 0            # Put return value in $a0
+    	la $a1, WHITE 	#Changes the color of the paddle drawn to be the background color
+    	li $a2, PADDLE_SIZE
+    	jal draw_paddle               # Draws the new paddle
+	b game_loop			#Branches back to game loop	
+
+#Quits the game
+quit:
+	li $v0, 10                      # Quit gracefully
+	syscall
+	
+#Pauses the game
+pause_game:
+	b pause_loop 			#puts the game into the pause loop
+		
+#Special input procedure that only checks for quitting and unpausing the game
+pause_input:                     # A key is pressed
+    lw $a0, 4($t0)                  # Load second word from keyboard
+    beq $a0, 0x71, quit     # Check if the key q was pressed
+    beq $a0, 0x70, game_loop     # Check if the key p was pressed whcih then unpauses the game and goes back to game loop
+    b pause_loop
+
+pause_loop: #The game is not running during this loop
+	# 1a. Check if key has been pressed
+    # 1b. Check which key has been pressed
+    # unpauses if p is pressed
+    lw $t0, ADDR_KBRD               # $t0 = base address for keyboard
+    lw $t8, 0($t0)                  # Load first word from keyboard
+    beq $t8, 1, pause_input      # If first word 1, key is pressed
+    b pause_loop
+
+
 
 game_loop:
 	# 1a. Check if key has been pressed
@@ -250,4 +349,11 @@ game_loop:
 	# 4. Sleep
 
     #5. Go back to 1
+    lw $t0, ADDR_KBRD               # $t0 = base address for keyboard
+    lw $t8, 0($t0)                  # Load first word from keyboard
+    beq $t8, 1, keyboard_input      # If first word 1, key is pressed
+    
+    
+    
+    
     b game_loop
