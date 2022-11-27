@@ -249,7 +249,7 @@ keyboard_input:                     	# A key is pressed
     beq $a0, 0x70, pause_game     	# Check if the key p was pressed
     b game_loop
 
-erase_helper:
+erase_paddle:
 	subi $sp, $sp, 4  # allocate 1 word on the stack
 	sw $ra, 0($sp)      # save $ra 
     	jal get_location_address	#Gets the location address at (wherever the paddle is)
