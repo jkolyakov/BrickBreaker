@@ -32,8 +32,6 @@ WHITE:
 BACKGROUND_COLOUR:
 .word 0x000000
 
-
-
 ##############################################################################
 # Mutable Data
 ##############################################################################
@@ -41,7 +39,7 @@ BALL:
     .word 18 #x position
     .word 18 #y position
     .word 1 # x direction (1 is right, -1 left)
-    .word 1 # y direction (1 is down, -1 is up)
+    .word -1 # y direction (1 is down, -1 is up)
 PADDLE:
     .word 12 #x position
     .word 24 #y position
@@ -82,19 +80,8 @@ main: #SO FAR: Draws a full static game scree
     la $a1, WHITE
     li $a2, PADDLE_SIZE
     jal draw_paddle               # Draws a white paddle at $a0
-    
-    li $a0, 18
-    li $a1, 18
-    jal get_location_address	#Gets the location address at (18, 18)
-    
-    addi $a0, $v0, 0            # Put return value in $a0
-    la $a1, WHITE
-    jal draw_ball               # Draws the ball at position $a0
     jal game_loop		#Jumps to the game loop
-exit:
-	li 		$v0, 10
-	syscall
-    
+
     
     
 # draw_walls(start, colour_address, height) -> void
@@ -249,6 +236,7 @@ keyboard_input:                     	# A key is pressed
     beq $a0, 0x70, pause_game     	# Check if the key p was pressed
     b game_loop
 
+#Helper function that erases the paddle 
 erase_paddle:
 	subi $sp, $sp, 4  # allocate 1 word on the stack
 	sw $ra, 0($sp)      # save $ra 
@@ -257,7 +245,7 @@ erase_paddle:
    	la $a1, BACKGROUND_COLOUR 	#Changes the color of the paddle drawn to be the background color
     	li $a2, PADDLE_SIZE
     	
-    	#Nested procedure so we need to store the previous $ra
+    	#Nested procedure so we need to restore the previous $ra
     	
     	jal draw_paddle       	        #Erases the paddle
     	lw $ra, 0($sp)
@@ -265,11 +253,12 @@ erase_paddle:
     	
     	jr $ra
 
+#moves the paddle one unit left
 move_left:
 	la $t0, PADDLE 			#Gets paddle object
 	lw $a0, 0($t0)			#Sets parameter 1 to x value
     	lw $a1, 4($t0)			#Sets parameter 2 to y value
-	jal erase_helper		#Erase helper function
+	jal erase_paddle		#Erase helper function
     	
     	
     	la $t0, PADDLE 			#Gets paddle object
@@ -289,11 +278,12 @@ move_left:
     	jal draw_paddle               # Draws the new paddle
 	b game_loop			#Branches back to game loop
 
+#Moves the paddle one unit right
 move_right:
 	la $t0, PADDLE 			#Gets paddle object
 	lw $a0, 0($t0)			#Sets parameter 1 to x value
     	lw $a1, 4($t0)			#Sets parameter 2 to y value
-	jal erase_helper		#Erase helper function
+	jal erase_paddle		#Erase helper function
     	
     	
     	la $t0, PADDLE 			#Gets paddle object
@@ -329,6 +319,7 @@ pause_input:                     # A key is pressed
     beq $a0, 0x70, game_loop     # Check if the key p was pressed whcih then unpauses the game and goes back to game loop
     b pause_loop
 
+#IN PROGRESS loops is supposed to pause all inputs and all movement
 pause_loop: #The game is not running during this loop
 	# 1a. Check if key has been pressed
     # 1b. Check which key has been pressed
@@ -337,8 +328,186 @@ pause_loop: #The game is not running during this loop
     lw $t8, 0($t0)                  # Load first word from keyboard
     beq $t8, 1, pause_input      # If first word 1, key is pressed
     b pause_loop
+	
+#Calls each individual check for collision (checks sides, top and bottom, and diagonal
+check_collision:
+	subi $sp, $sp, 4  			# allocate 1 word on the stack
+	sw $ra, 0($sp)      			# save $ra 
+	jal check_sides
+	jal check_vertical
+	jal check_diagonal
+	lw $ra, 0($sp)				#restores the $ra
+    	addi $sp, $sp, 4			#restores the stack pointer
+	jr $ra
+	
+#Checks the left and right sides for collision    	
+check_sides:
+	subi $sp, $sp, 4  			# allocate 1 word on the stack
+	sw $ra, 0($sp)      			# save $ra 
+    	la $t0, BALL 				#Gets ball object
+	lw $t1, 0($t0)				#loads $t1 to x pos
+    	lw $a1, 4($t0)				#loads $a1 to y pos
+    	lw $t3, 8($t0)				#loads the x direction into $t3
+    	add $a0, $t1,$t3			#Stores the next x location of the ball
+    	jal get_location_address		#Gets location of the unit directly to the right/left of the ball
+    	
+    	#gets color of unit to the side of the ball
+    	lw $t1, 0($v0)
+    	
+    	
+    	lw $ra, 0($sp)				#restores the $ra
+    	addi $sp, $sp, 4			#restores the stack pointer		
+    										
+    	la $t2, BACKGROUND_COLOUR		
+    	lw $t2, 0($t2)
+    	
+    	beq $t1,$t2, skip_sides	#jumps back to check collision if the side of the ball is not a collidable color
+    	#ELSE the ball needs to change its x direction and check if a brick needs to break
+    	
+    	la $t0, BALL 				#Gets ball object
+    	lw $t3, 8($t0)				#loads the x direction into $t3
+    	li $t1, -1				#sets register to -1
+    	mult $t3, $t1				#multiplies -1 and the current x direction
+    	mflo $t3				#gets the 32 low bits of the multiplication
+    	sw $t3, 8($t0)				#stores the negative of the balls x direction to the ball 
+    	
+   	subi $sp, $sp, 4  			# allocate 1 word on the stack
+	sw $ra, 0($sp)      			# save $ra 
+	
+    	addi $a0, $v0, 0 #Loads the address where collision happened into $a0
+    	jal break_brick
+    	
+    	lw $ra, 0($sp)				#restores the $ra
+    	addi $sp, $sp, 4			#restores the stack pointer
+    	
+skip_sides:
+    	jr $ra
+    	
+#Checks the top and bottom for collision
+check_vertical:
+	subi $sp, $sp, 4  			# allocate 1 word on the stack
+	sw $ra, 0($sp)      			# save $ra 
+    	la $t0, BALL 				#Gets ball object
+	lw $a0, 0($t0)				#Sets parameter 1 to x value
+    	lw $t1, 4($t0)				#Sets parameter 2 to y value
+    	lw $t3, 12($t0)				#loads the y direction into $t3
+    	add $a1, $t1,$t3			#Stores the next y location of the ball
+    	jal get_location_address		#Gets location of the unit directly to the right/left of the ball
+    	
+    	lw $ra, 0($sp)				#restores the $ra
+    	addi $sp, $sp, 4			#restores the stack pointer
+    	
 
+    	
+    	
+    	#gets color of unit to the upper and lower sides of the ball
+    	lw $t1, ($v0)				#gets color of unit next to the top/bottom of the ball			
+    	la $t2, BACKGROUND_COLOUR		
+    	lw $t2, 0($t2)
+    	
+    	beq $t1, $t2, skip_vertical	#jumps back to check collision if the side of the ball is not a collidable color
+    	#ELSE the ball needs to change its x direction
+    	
+    	la $t0, BALL 				#Gets ball object
+    	lw $t3, 12($t0)				#loads the y direction into $t3
+    	li $t1, -1				#sets register to -1
+    	mult $t3, $t1				#multiplies -1 and the current y direction
+    	mflo $t3				#gets the 32 low bits of the multiplication
+    	sw $t3, 12($t0)				#stores the negative of the balls x direction to the ball 
+    	
+    	addi $a0, $v0, 0 #Loads the address where collision happened into $a0
+    	jal break_brick
+    	
+    	lw $ra, 0($sp)				#restores the $ra
+    	addi $sp, $sp, 4			#restores the stack pointer
+    	
+skip_vertical:
+    	jr $ra  
+    	
+#Check is the diagonals for collision	
+check_diagonal:
+	subi $sp, $sp, 4  			# allocate 1 word on the stack
+	sw $ra, 0($sp)      			# save $ra 
+    	la $t0, BALL 				#Gets ball object
+	lw $a0, 0($t0)				#Sets parameter 1 to x value
+    	lw $t1, 4($t0)				#Sets parameter 2 to y value
+    	lw $t3, 12($t0)				#loads the y direction into $t3
+    	add $a1, $t1,$t3			#Stores the next y location of the ball
+    	lw $t3, 8($t0)				#Loads x direction into $t3
+    	add $a0, $a0, $t3			#Stores teh next x location in $a0
+    	jal get_location_address		#Gets location of the unit directly to the diagonal of the ball
+    	
+    	lw $ra, 0($sp)				#restores the $ra
+    	addi $sp, $sp, 4			#restores the stack pointer
+    	
 
+    	
+    	
+    	#gets color of unit to the upper and lower sides of the ball
+    	lw $t1, ($v0)				#gets color of unit next to the top/bottom of the ball			
+    	la $t2, BACKGROUND_COLOUR		
+    	lw $t2, 0($t2)
+    	
+    	beq $t1, $t2, skip_vertical	#jumps back to check collision if the side of the ball is not a collidable color
+    	#ELSE the ball needs to change its x direction
+    	
+    	la $t0, BALL 				#Gets ball object
+    	lw $t3, 12($t0)				#loads the y direction into $t3
+    	li $t1, -1				#sets register to -1
+    	mult $t3, $t1				#multiplies -1 and the current y direction
+    	mflo $t3				#gets the 32 low bits of the multiplication
+    	sw $t3, 12($t0)				#stores the negative of the balls x direction to the ball 
+    	
+    	lw $t3, 8($t0)				#loads the y direction into $t3
+    	mult $t3, $t1				#multiplies -1 and the current y direction
+    	mflo $t3				#gets the 32 low bits of the multiplication
+    	sw $t3, 8($t0)				#stores the negative of the balls x direction to the ball 
+    	
+    	addi $a0, $v0, 0 #Loads the address where collision happened into $a0
+    	jal break_brick
+    	
+    	lw $ra, 0($sp)				#restores the $ra
+    	addi $sp, $sp, 4			#restores the stack pointer
+    	
+skip_diagonal:
+    	jr $ra  	
+	
+#move_ball(void) -> void
+#Moves the ball in its corresponding x and y direction
+move_ball:
+	la $t0, BALL 			#Gets ball object stores it in $t1
+    	lw $t1, 0($t0)			#sets $t1 to x value
+    	lw $t2, 4($t0)			#sets $t2 to y value
+    	lw $t3, 8($t0)			#sets $t3 to x direction
+    	lw $t4, 12($t0)			#sets $t4 to y direction
+    	add $t5, $t1, $t3		#gets the next x pos
+    	add $t6, $t2, $t4		#gets next y pos
+    	sw $t5, 0($t0)
+    	sw $t6, 4($t0)
+    	jr $ra
+    	
+
+#break_brick(address) -> void
+#Checks if pixel is a brick colour, if so erases the pixel
+break_brick:
+	
+	la $t0, BRICK_COLOURS
+	lw $t3, 0($t0)
+	lw $t2, 0($a0)
+	beq $t3, $t2, erase_unit
+	lw $t3, 4($t0)
+	beq $t3, $t2, erase_unit
+	lw $t3, 8($t0)
+	beq $t3, $t2, erase_unit
+	jr $ra
+
+#erase_unit(address) -> void
+#Erases a pixel at a certain address
+erase_unit:
+	la $t0, BACKGROUND_COLOUR
+	lw $t0, 0($t0)
+	sw $t0, 0($a0)
+	jr $ra
 
 game_loop:
 	# 1a. Check if key has been pressed
@@ -353,7 +522,31 @@ game_loop:
     lw $t8, 0($t0)                  # Load first word from keyboard
     beq $t8, 1, keyboard_input      # If first word 1, key is pressed
     
+    #NEED TO CHECK FOR COLLISION BEFORE DRAWING BALL
+    jal check_collision
+    jal check_collision # For the one specific edge case
     
+    la $t0, BALL 			#Gets ball object stores it in $t0
+    lw $a0, 0($t0)			#sets $a0 to x value
+    lw $a1, 4($t0)			#sets $a1 to y value
+    beq $a1, 33, quit			#Lose when ball goes past 24 y 
+    jal get_location_address	#Gets the location address at (18, 18)
+    addi $a0, $v0, 0            # Put return value in $a0
+    la $a1, BACKGROUND_COLOUR
+    jal draw_ball
     
+    jal move_ball			#Sets the new ball location
+    la $t0, BALL 			#Gets ball object stores it in $t0
+    lw $a0, 0($t0)			#sets $a0 to x value
+    lw $a1, 4($t0)			#sets $a1 to y value
+    jal get_location_address	#Gets the location address at (18, 18)
+    addi $a0, $v0, 0            # Put return value in $a0
+    la $a1, WHITE
+    jal draw_ball
+    
+    li $a0, 100				#Stores 100 in first argument
+    li $v0, 32				# pause for 100 milisec to make sure the ball doesnt go too fast
+    syscall
+
     
     b game_loop
