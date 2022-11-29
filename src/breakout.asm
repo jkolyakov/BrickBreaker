@@ -36,8 +36,8 @@ BACKGROUND_COLOUR:
 # Mutable Data
 ##############################################################################
 BALL:
-    .word 18 #x position
-    .word 18 #y position
+    .word 1 #x position
+    .word 10 #y position
     .word 1 # x direction (1 is right, -1 left)
     .word -1 # y direction (1 is down, -1 is up)
 PADDLE:
@@ -543,7 +543,19 @@ game_loop:
     addi $a0, $v0, 0            # Put return value in $a0
     la $a1, WHITE
     jal draw_ball
+    jal move_ball			#Sets the new ball location
+    la $t0, BALL 			#Gets ball object stores it in $t0
+    lw $a0, 0($t0)			#sets $a0 to x value
+    lw $a1, 4($t0)			#sets $a1 to y value
+    jal get_location_address	#Gets the location address at (18, 18)
+    addi $a0, $v0, 0            # Put return value in $a0
+    la $a1, WHITE
+    jal draw_ball
     
+    li $a0, 100				#Stores 100 in first argument
+    li $v0, 32				# pause for 100 milisec to make sure the ball doesnt go too fast
+    syscall
+
     li $a0, 100				#Stores 100 in first argument
     li $v0, 32				# pause for 100 milisec to make sure the ball doesnt go too fast
     syscall
