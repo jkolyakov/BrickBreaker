@@ -29,6 +29,8 @@ GRAY:
 .word 0x808080 #gray
 WHITE:
 .word 0xffffff #white
+LIGHT_RED:
+.word 0xFF5733 #Light red
 BACKGROUND_COLOUR:
 .word 0x000000
 
@@ -36,14 +38,24 @@ BACKGROUND_COLOUR:
 # Mutable Data
 ##############################################################################
 BALL:
-    .word 1 #x position
-    .word 10 #y position
+    .word 18 #x position
+    .word 18 #y position
     .word 1 # x direction (1 is right, -1 left)
     .word -1 # y direction (1 is down, -1 is up)
 PADDLE:
     .word 12 #x position
     .word 24 #y position
     .word PADDLE_SIZE
+
+PADDLE_2:
+    .word 12 #x position
+    .word 28 #y position
+    .word PADDLE_SIZE
+    
+LIVES:
+	.word 12 #x position
+    	.word 0 #y position
+	.word 3 # starting number of lives
 ##############################################################################
 # Code
 ##############################################################################
@@ -72,6 +84,24 @@ main: #SO FAR: Draws a full static game scree
     li $a2, 30
     jal draw_bricks               # Draws 3 rows of bricks at $a0
     
+    li $a0, 6
+    li $a1, 4
+    jal get_location_address 	#Gets the location address at (0,5)
+    
+    addi $a0, $v0, 0            # Put return value in $a0
+    la $a1, GRAY
+    li $a2, 6
+    jal draw_unbreakable_bricks               # Draws 3 rows of bricks at $a0
+    
+    li $a0, 12
+    li $a1, 0
+    jal get_location_address 	#Gets the location address at (0,5)
+    
+    addi $a0, $v0, 0            # Put return value in $a0
+    la $a1, WHITE
+    li $a2, 3
+    jal draw_lives
+    
     li $a0, 12
     li $a1, 24
     jal get_location_address	#Gets the location address at (12,24)
@@ -80,6 +110,16 @@ main: #SO FAR: Draws a full static game scree
     la $a1, WHITE
     li $a2, PADDLE_SIZE
     jal draw_paddle               # Draws a white paddle at $a0
+    
+    li $a0, 12
+    li $a1, 28
+    jal get_location_address	#Gets the location address at (12,24)
+    
+    addi $a0, $v0, 0            # Put return value in $a0
+    la $a1, LIGHT_RED		#chooses second color
+    li $a2, PADDLE_SIZE
+    jal draw_paddle               # Draws a light red paddle at $a0
+    
     jal game_loop		#Jumps to the game loop
 
     
@@ -136,7 +176,31 @@ draw_ceiling_loop:
 draw_ceiling_epi:
     jr $ra
     
-    
+# draw_lives(start, colour_address, width) -> void
+#   Draws the lives with width units horizontally across the display using the
+#   colour at colour_address and starting from the start address.
+#
+#   Preconditions:
+#       - The start address can "accommodate" a line of width units
+draw_lives:
+    # Retrieve the colour
+    lw $t0, 0($a1)              # colour = *colour_address
+
+    # Iterate $a2 times, drawing each unit of the ceiling in the line
+    li $t1, 0                   # i = 0
+draw_lives_loop:
+    slt $t2, $t1, $a2           # i < width ?
+    beq $t2, $0, draw_lives_epi  # if not, then done
+
+        sw $t0, 4($a0)          # Paint unit with colour
+        addi $a0, $a0, 8       # Go to next unit
+
+    addi $t1, $t1, 1            # i = i + 1
+    b draw_lives_loop
+
+draw_lives_epi:
+    jr $ra
+        
 # draw_bricks(start, colour_address, width) -> void
 #   Draw 3 lines of bricks with width units horizontally across the display using the
 #   colours at colour_address and starting from the start address.
@@ -167,7 +231,40 @@ draw_bricks_loop:
 draw_bricks_epi:
     jr $ra
     
-    
+# draw_bricks(start, colour_address, width) -> void
+#   Draw 1 line of bricks with width units horizontally across the display using the
+#   colours at colour_address and starting from the start address.
+#
+#   Preconditions:
+#       - The start address can "accommodate" a line of width units
+draw_unbreakable_bricks:
+    # Iterate $a2 times, drawing each unit in the line
+    li $t1, 0                   # i = 0
+draw_unbreakable_bricks_loop:
+    lw $t0, 0($a1)              # colour = *colour_address[0]
+
+    slt $t2, $t1, $a2           # i < width ?
+    beq $t2, $0, draw_unbreakable_bricks_epi  # if not, then done
+
+        sw $t0, 4($a0)          # Paint unit below with colour
+        
+        sw $t0, 132($a0)          # Paint unit below with colour
+        
+        sw $t0, 260($a0)          # Paint unit with colour
+        
+        sw $t0, 388($a0)          # Paint unit with colour
+        
+        sw $t0, 516($a0)          # Paint unit with colour
+        
+        
+        addi $a0, $a0, 20       # Go to next unit
+
+    addi $t1, $t1, 1            # i = i + 1
+    b draw_unbreakable_bricks_loop
+
+draw_unbreakable_bricks_epi:
+    jr $ra
+        
 # draw_paddle(start, colour_address, width) -> void
 #   Draw a paddle (line) with width units horizontally across the display using the
 #   colour at colour_address and starting from the start address.
@@ -232,6 +329,8 @@ keyboard_input:                     	# A key is pressed
     lw $a0, 4($t0)                  	# Load second word from keyboard
     beq $a0 0x61, move_left		# moves paddle left 1 unit
     beq $a0 0x64, move_right		# moves paddle right 1 unit
+    beq $a0 0x6A, move_left2
+    beq $a0 0x6C, move_right2
     beq $a0, 0x71, quit     		# Check if the key q was pressed
     beq $a0, 0x70, pause_game     	# Check if the key p was pressed
     b game_loop
@@ -273,7 +372,7 @@ move_left:
     	
     	jal get_location_address	#Gets the location address at (wherever the paddle is)
     	addi $a0, $v0, 0            # Put return value in $a0
-    	la $a1, WHITE 	#Changes the color of the paddle drawn to be the background color
+    	la $a1, WHITE 	#Changes the color of the paddle drawn to be the paddle color
     	li $a2, PADDLE_SIZE
     	jal draw_paddle               # Draws the new paddle
 	b game_loop			#Branches back to game loop
@@ -298,13 +397,70 @@ move_right:
     	
     	jal get_location_address	#Gets the location address at (wherever the paddle is)
     	addi $a0, $v0, 0            # Put return value in $a0
-    	la $a1, WHITE 	#Changes the color of the paddle drawn to be the background color
+    	la $a1, WHITE 	#Changes the color of the paddle drawn to be the paddle color
     	li $a2, PADDLE_SIZE
     	jal draw_paddle               # Draws the new paddle
 	b game_loop			#Branches back to game loop	
 
+move_left2:
+	la $t0, PADDLE_2 			#Gets paddle2 object
+	lw $a0, 0($t0)			#Sets parameter 1 to x value
+    	lw $a1, 4($t0)			#Sets parameter 2 to y value
+	jal erase_paddle		#Erase helper function
+    	
+    	
+    	la $t0, PADDLE_2 			#Gets paddle2 object
+    	lw $a0, 0($t0)			#Sets parameter 1 to x value
+    	lw $a1, 4($t0)			#Sets parameter 2 to y value
+    	beq $a0, 1, skip_drawing_left2 	#Catches if the paddle is at the edge
+    	addi $a0, $a0, -1		#Moves x value left by 1
+    	skip_drawing_left2:
+    	li $v1, 0			#resets the erase case
+    	sw $a0, 0($t0)			#Updates x value
+    	sw $a1, 4($t0)			#Updates y value
+    	
+    	jal get_location_address	#Gets the location address at (wherever the paddle is)
+    	addi $a0, $v0, 0            # Put return value in $a0
+    	la $a1, LIGHT_RED 	#Changes the color of the paddle drawn to be the paddle color
+    	li $a2, PADDLE_SIZE
+    	jal draw_paddle               # Draws the new paddle
+	b game_loop			#Branches back to game loop
+
+#Moves the paddle one unit right
+move_right2:
+	la $t0, PADDLE_2 			#Gets paddle object
+	lw $a0, 0($t0)			#Sets parameter 1 to x value
+    	lw $a1, 4($t0)			#Sets parameter 2 to y value
+	jal erase_paddle		#Erase helper function
+    	
+    	
+    	la $t0, PADDLE_2 			#Gets paddle object
+    	lw $a0, 0($t0)			#Sets parameter 1 to x value
+    	lw $a1, 4($t0)			#Sets parameter 2 to y value
+    	beq $a0, 23, skip_drawing_right2 	#Catches if the paddle is at the edge
+    	addi $a0, $a0, 1		#Moves x value left by 1
+    	skip_drawing_right2:
+    	li $v1, 0			#resets erase case
+    	sw $a0, 0($t0)			#Updates x value
+    	sw $a1, 4($t0)			#Updates y value
+    	
+    	jal get_location_address	#Gets the location address at (wherever the paddle is)
+    	addi $a0, $v0, 0            # Put return value in $a0
+    	la $a1, LIGHT_RED 	#Changes the color of the paddle drawn to be the paddle color
+    	li $a2, PADDLE_SIZE
+    	jal draw_paddle               # Draws the new paddle
+	b game_loop			#Branches back to game loop	
+	
+	
 #Quits the game
 quit:
+	over_sound:
+		li $a0, 75
+		li $a1, 1000				#Stores 100 in first argument
+        	li $a2, 121
+        	li $a3, 100
+        	li $v0, 31
+        	syscall				# pause for 100 milisec to make sure the ball doesnt go too fast
 	li $v0, 10                      # Quit gracefully
 	syscall
 	
@@ -486,28 +642,126 @@ move_ball:
     	sw $t6, 4($t0)
     	jr $ra
     	
-
 #break_brick(address) -> void
 #Checks if pixel is a brick colour, if so erases the pixel
 break_brick:
-	
 	la $t0, BRICK_COLOURS
 	lw $t3, 0($t0)
 	lw $t2, 0($a0)
-	beq $t3, $t2, erase_unit
+	beq $t3, $t2, erase_unit_red
 	lw $t3, 4($t0)
-	beq $t3, $t2, erase_unit
+	beq $t3, $t2, erase_unit_green
 	lw $t3, 8($t0)
-	beq $t3, $t2, erase_unit
+	beq $t3, $t2, erase_unit_blue
+		collision_sound: #Sound plays on collision
+		li $a0, 75	#tone	
+		li $a1, 500	#time of playing	
+        	li $a2, 126	# instrument
+        	li $a3, 100	#volume
+        	li $v0, 31
+        	syscall
 	jr $ra
 
 #erase_unit(address) -> void
 #Erases a pixel at a certain address
-erase_unit:
+erase_unit_red:
+	
+	
+	la $t0, BRICK_COLOURS
+	lw $t0, 4($t0)
+	sw $t0, 0($a0)
+	brick_sound:	#Sound plays when brick breaks
+		li $a0, 75
+		li $a1, 1000				
+        	li $a2, 127
+        	li $a3, 75
+        	li $v0, 31
+        	syscall				
+        	
+	jr $ra
+	
+#erase_unit(address) -> void
+#Erases a pixel at a certain address
+erase_unit_green:
+	
+	
+	la $t0, BRICK_COLOURS
+	lw $t0, 8($t0)
+	sw $t0, 0($a0)
+	brick_sound1:	#Sound plays when brick breaks
+		li $a0, 75
+		li $a1, 1000				
+        	li $a2, 127
+        	li $a3, 75
+        	li $v0, 31
+        	syscall				
+        	
+	jr $ra
+
+#erase_unit(address) -> void
+#Erases a pixel at a certain address
+erase_unit_blue:
+	
+	
 	la $t0, BACKGROUND_COLOUR
 	lw $t0, 0($t0)
 	sw $t0, 0($a0)
+	brick_sound2:	#Sound plays when brick breaks
+		li $a0, 75
+		li $a1, 1000				
+        	li $a2, 127
+        	li $a3, 75
+        	li $v0, 31
+        	syscall				
+        	
 	jr $ra
+
+#subtracts a life from the player, if lives = 0, quits the game
+lose_life:
+	la $t0, LIVES #Loads the lives address
+	lw $t1, 8($t0) #loads amount of lives
+	beq $0, $t1, quit #checks if lives is 0 and then quits game
+	subi $t1, $t1, 1 #subtracts a life
+	sw $t1, 8($t0) #saves the updated value into the lives object
+	
+	erase_life:	#erases the life displayed on screen
+	mul $t1,  $t1, 2 #Multiplies the amt of lives by 2 for erasing
+	
+	addi $t1, $t1, 1
+	
+	lw $t4, 0($t0)
+	
+	add $t2, $t1, $t4 #stores the x location to be erased in $t2
+	
+	add $a0, $t2, $0
+	
+	lw $a1, 4($t0)
+	
+	jal get_location_address
+	
+	addi $t1, $v0, 0
+	
+	la $t0, GRAY
+	
+	lw $t0, 0($t0)
+	
+	sw $t0, 0($t1)
+	
+	b set_ball
+	
+set_ball:
+	la $t0, BALL
+	li $t1, 18
+	li $t2, 18
+	li $t3, 1
+	li $t4, -1
+	sw $t1, 0($t0)
+	sw $t2, 4($t0)
+	sw $t3, 8($t0)
+	sw $t4, 12($t0)
+	b game_loop
+
+
 
 game_loop:
 	# 1a. Check if key has been pressed
@@ -525,24 +779,23 @@ game_loop:
     #NEED TO CHECK FOR COLLISION BEFORE DRAWING BALL
     jal check_collision
     jal check_collision # For the one specific edge case
+    jal check_collision # For the one specific edge case
     
     la $t0, BALL 			#Gets ball object stores it in $t0
     lw $a0, 0($t0)			#sets $a0 to x value
     lw $a1, 4($t0)			#sets $a1 to y value
-    beq $a1, 33, quit			#Lose when ball goes past 24 y 
     jal get_location_address	#Gets the location address at (18, 18)
+
     addi $a0, $v0, 0            # Put return value in $a0
     la $a1, BACKGROUND_COLOUR
     jal draw_ball
     
-    jal move_ball			#Sets the new ball location
     la $t0, BALL 			#Gets ball object stores it in $t0
     lw $a0, 0($t0)			#sets $a0 to x value
     lw $a1, 4($t0)			#sets $a1 to y value
-    jal get_location_address	#Gets the location address at (18, 18)
-    addi $a0, $v0, 0            # Put return value in $a0
-    la $a1, WHITE
-    jal draw_ball
+    beq $a1, 33, lose_life			#Lose when ball goes past 24 y 
+    
+    
     jal move_ball			#Sets the new ball location
     la $t0, BALL 			#Gets ball object stores it in $t0
     lw $a0, 0($t0)			#sets $a0 to x value
@@ -552,10 +805,6 @@ game_loop:
     la $a1, WHITE
     jal draw_ball
     
-    li $a0, 100				#Stores 100 in first argument
-    li $v0, 32				# pause for 100 milisec to make sure the ball doesnt go too fast
-    syscall
-
     li $a0, 100				#Stores 100 in first argument
     li $v0, 32				# pause for 100 milisec to make sure the ball doesnt go too fast
     syscall
